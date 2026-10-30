@@ -8,11 +8,11 @@ directory = "./public"
 binding = "ASSETS"
 run_worker_first = ["/api/*"]
 
-# Cơ sở dữ liệu D1. Thay database_id bằng mã bạn nhận được ở Bước 4 trong README.
+# Cơ sở dữ liệu D1. Đã điền mã database so-tay-db.
 [[d1_databases]]
 binding = "DB"
 database_name = "so-tay-db"
-database_id = "DIEN_DATABASE_ID_VAO_DAY"
+database_id = "ddf28a7f-c415-4a75-b2fd-cc6541a04d25"
 
 # Model Claude dùng cho các nút "Nhờ Claude" (chỉ chạy khi bạn đặt ANTHROPIC_API_KEY)
 [vars]
