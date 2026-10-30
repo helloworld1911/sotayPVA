@@ -1,3 +1,0 @@
-# Đổi tên file này thành .dev.vars để chạy thử trên máy (npm run dev)
-APP_PASSWORD=matkhau-thu-nghiem
-# ANTHROPIC_API_KEY=sk-ant-...
