@@ -132,7 +132,7 @@ async function changePassword(req, env, u) {
 }
 
 /* ---------- data (mỗi người chỉ thấy dữ liệu của mình) ---------- */
-async function data(req, env, u, col, id) {
+async function data(req, env, u, col, id, ctx) {
   if (req.method === "GET" && !id) {
     const { results } = await env.DB.prepare("SELECT id, data FROM udocs WHERE uid = ? AND col = ? ORDER BY updated_at DESC").bind(u.id, col).all();
     return json({ docs: results.map((r) => ({ id: r.id, data: JSON.parse(r.data) })), at: Date.now() });
@@ -145,13 +145,21 @@ async function data(req, env, u, col, id) {
     try { doc = JSON.parse(text); } catch { return json({ error: "Dữ liệu không phải JSON." }, 400); }
     if (!doc || typeof doc !== "object" || Array.isArray(doc)) return json({ error: "Dữ liệu phải là một đối tượng." }, 400);
     doc.id = id;
+    const old = await env.DB.prepare("SELECT data FROM udocs WHERE uid = ? AND col = ? AND id = ?").bind(u.id, col, id).first();
+    const body = JSON.stringify(doc);
     await env.DB.prepare(
       "INSERT INTO udocs (uid, col, id, data, updated_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(uid, col, id) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at"
-    ).bind(u.id, col, id, JSON.stringify(doc), Date.now()).run();
+    ).bind(u.id, col, id, body, Date.now()).run();
+    if (old) {
+      const now = imgIds(body), removed = [...imgIds(old.data)].filter((x) => !now.has(x));
+      if (removed.length) ctx.waitUntil(dropUnused(env, u.id, removed).catch(() => {}));
+    }
     return json({ ok: true });
   }
   if (req.method === "DELETE") {
+    const old = await env.DB.prepare("SELECT data FROM udocs WHERE uid = ? AND col = ? AND id = ?").bind(u.id, col, id).first();
     await env.DB.prepare("DELETE FROM udocs WHERE uid = ? AND col = ? AND id = ?").bind(u.id, col, id).run();
+    if (old) { const ids = imgIds(old.data); if (ids.size) ctx.waitUntil(dropUnused(env, u.id, ids).catch(() => {})); }
     return json({ ok: true });
   }
   return json({ error: "method_not_allowed" }, 405);
@@ -177,6 +185,36 @@ async function imgGet(env, u, id) {
   const headers = { "content-type": row.type, "cache-control": "private, max-age=31536000, immutable", "x-content-type-options": "nosniff" };
   if (row.type === "image/svg+xml") headers["content-security-policy"] = "default-src 'none'; style-src 'unsafe-inline'";
   return new Response(new Uint8Array(row.data), { headers });
+}
+
+/* ---------- dọn ảnh không còn dùng ---------- */
+const IMG_REF = /\/api\/img\/([A-Za-z0-9_-]{6,40})/g;
+const imgIds = (text) => new Set([...String(text || "").matchAll(IMG_REF)].map((m) => m[1]));
+async function usedImgIds(env, uid) {
+  const { results } = await env.DB.prepare("SELECT data FROM udocs WHERE uid = ? AND data LIKE '%/api/img/%'").bind(uid).all();
+  const used = new Set();
+  for (const r of results) imgIds(r.data).forEach((x) => used.add(x));
+  return used;
+}
+async function dropUnused(env, uid, candidates) {
+  const list = [...candidates];
+  if (!list.length) return 0;
+  const used = await usedImgIds(env, uid);
+  const gone = list.filter((id) => !used.has(id));
+  for (let i = 0; i < gone.length; i += 50) {
+    const part = gone.slice(i, i + 50);
+    await env.DB.prepare(`DELETE FROM imgs WHERE uid = ? AND id IN (${part.map(() => "?").join(",")})`).bind(uid, ...part).run();
+  }
+  return gone.length;
+}
+// Mỗi ngày một lần: xoá ảnh đã tải lên hơn 1 giờ mà không ghi chú nào dùng (ví dụ ảnh dán vào rồi huỷ không lưu)
+async function dailyImgGc(env, uid) {
+  const key = "gc:" + uid, now = Date.now();
+  const last = await env.DB.prepare("SELECT v FROM meta WHERE k = ?").bind(key).first();
+  if (last && now - +last.v < 864e5) return;
+  await env.DB.prepare("INSERT OR REPLACE INTO meta (k, v) VALUES (?, ?)").bind(key, String(now)).run();
+  const { results } = await env.DB.prepare("SELECT id FROM imgs WHERE uid = ? AND created_at < ?").bind(uid, now - 3600e3).all();
+  if (results.length) await dropUnused(env, uid, results.map((r) => r.id));
 }
 
 /* ---------- Claude (tuỳ chọn) ---------- */
@@ -205,7 +243,7 @@ async function ai(req, env) {
 }
 
 export default {
-  async fetch(req, env) {
+  async fetch(req, env, ctx) {
     const url = new URL(req.url), p = url.pathname;
     if (!p.startsWith("/api/")) return env.ASSETS ? env.ASSETS.fetch(req) : new Response("Not found", { status: 404 });
     try {
@@ -217,14 +255,14 @@ export default {
       if (p === "/api/logout" && req.method === "POST") return json({ ok: true }, 200, { "set-cookie": cookie("", 0) });
       const u = await currentUser(req, env);
       if (!u) return json({ error: "unauthorized" }, 401);
-      if (p === "/api/me") return json({ ok: true, user: pub(u), ai: !!env.ANTHROPIC_API_KEY });
+      if (p === "/api/me") { ctx.waitUntil(dailyImgGc(env, u.id).catch(() => {})); return json({ ok: true, user: pub(u), ai: !!env.ANTHROPIC_API_KEY }); }
       if (p === "/api/password" && req.method === "POST") return await changePassword(req, env, u);
       if (p === "/api/ai" && req.method === "POST") return await ai(req, env);
       if (p === "/api/img" && req.method === "POST") return await imgUpload(req, env, u);
       const im = p.match(/^\/api\/img\/([A-Za-z0-9_-]{6,40})$/);
       if (im && req.method === "GET") return await imgGet(env, u, im[1]);
       const m = p.match(/^\/api\/data\/([a-z]+)(?:\/([^/]+))?$/);
-      if (m && COLS.has(m[1])) return await data(req, env, u, m[1], m[2] ? decodeURIComponent(m[2]) : null);
+      if (m && COLS.has(m[1])) return await data(req, env, u, m[1], m[2] ? decodeURIComponent(m[2]) : null, ctx);
       return json({ error: "not_found" }, 404);
     } catch (e) {
       return json({ error: "Lỗi máy chủ: " + (e && e.message ? e.message : String(e)) }, 500);

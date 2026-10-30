@@ -1108,7 +1108,7 @@ function openEditor(n){
   if(!S.canWrite)return;
   const isNew=!n;
   n=n||{id:uid(),title:"",subject:S.subject||"",tags:S.tag?[S.tag]:[],content:"",pinned:false,reviews:0,createdAt:Date.now()};
-  S.editing=n;S.dirty=false;S.selfTest=false;S.section="notes";
+  S.editing=n;S.dirty=false;S.selfTest=false;S.section="notes";S.upl=new Set();
   $("#app").dataset.screen="note";closeDrawer();
   const P=$("#pane");P.dataset.sig="__edit";P.dataset.pid="";
   const subjOpts=allSubjects().map(s=>`<option value="${esc(s)}">`).join("");
@@ -1164,7 +1164,10 @@ function openEditor(n){
 async function closeEditor(force){
   if(!S.editing)return true;
   if(S.dirty&&!force&&!(await confirmBox("Bỏ thay đổi?","Những gì bạn vừa viết chưa được lưu.","Bỏ thay đổi")))return false;
-  const P=$("#pane");P.onclick=null;P.oninput=null;S.editing=null;S.dirty=false;refresh(true);return true;
+  const ed=S.editing,up=[...S.upl];S.upl=new Set();
+  const P=$("#pane");P.onclick=null;P.oninput=null;S.editing=null;S.dirty=false;refresh(true);
+  if(up.length){const prev=S.notes.find(x=>x.id===ed.id);cleanupImages(up,prev?prev.content:"",ed.id)}
+  return true;
 }
 async function saveEditor(){
   const n=S.editing;if(!n)return;
@@ -1176,7 +1179,9 @@ async function saveEditor(){
   if(new Blob([JSON.stringify(doc)]).size>250000){toast("Ghi chú quá dài. Hãy tách thành nhiều ghi chú nhỏ hơn.");return}
   const btn=$('[data-e="save"]');btn.disabled=true;
   const isNew=!S.notes.some(x=>x.id===doc.id);
+  const prevNote=S.notes.find(x=>x.id===doc.id),candidates=new Set([...imgRefs(prevNote?prevNote.content:""),...S.upl]);
   const ok=await Store.save(doc);if(btn)btn.disabled=false;
+  if(ok){S.upl=new Set();cleanupImages(candidates,doc.content,doc.id)}
   if(ok){S.dirty=false;const P=$("#pane");P.onclick=null;P.oninput=null;S.editing=null;S.section="notes";
     if(location.hash!=="#note-"+doc.id)location.hash="note-"+doc.id;refresh(true);toast(isNew?"Đã tạo ghi chú":"Đã lưu thay đổi")}
 }
@@ -2312,14 +2317,30 @@ document.addEventListener("submit",e=>{if(e.target&&e.target.id==="lform"){e.pre
 
 /* ---------- images ---------- */
 async function shrinkImage(blob){
+  // Nén mọi ảnh (png, jpg, bmp, webp lớn) sang WebP; giữ ảnh gốc nếu nén không nhỏ hơn
   try{
-    if(blob.size<350*1024||!/^image\/(png|jpe?g|webp|bmp)$/.test(blob.type)||typeof createImageBitmap!=="function")return blob;
-    const bmp=await createImageBitmap(blob);const sc=Math.min(1,1800/Math.max(bmp.width,bmp.height));const w=Math.round(bmp.width*sc),h=Math.round(bmp.height*sc);
-    const cv=document.createElement("canvas");cv.width=w;cv.height=h;const ctx=cv.getContext("2d");ctx.fillStyle="#fff";ctx.fillRect(0,0,w,h);ctx.drawImage(bmp,0,0,w,h);
-    const out=await new Promise(res=>cv.toBlob(res,"image/webp",.86));return out&&out.size<blob.size?out:blob;
+    if(!/^image\/(png|jpe?g|bmp|webp)$/.test(blob.type)||typeof createImageBitmap!=="function")return blob;
+    if(blob.type==="image/webp"&&blob.size<300*1024)return blob;
+    const bmp=await createImageBitmap(blob);const sc=Math.min(1,1800/Math.max(bmp.width,bmp.height));
+    const w=Math.max(1,Math.round(bmp.width*sc)),h=Math.max(1,Math.round(bmp.height*sc));
+    const cv=document.createElement("canvas");cv.width=w;cv.height=h;const ctx=cv.getContext("2d");ctx.fillStyle="#fff";ctx.fillRect(0,0,w,h);ctx.drawImage(bmp,0,0,w,h);if(bmp.close)bmp.close();
+    const enc=(t,q)=>new Promise(res=>cv.toBlob(b=>res(b&&b.type===t?b:null),t,q));
+    let out=await enc("image/webp",.82);
+    if(!out)out=await enc("image/jpeg",.85);
+    return out&&out.size<blob.size*.95?out:blob;
   }catch(e){return blob}
 }
-async function storeImage(blob){if(!S.assets||!blob)return null;try{const r=await S.assets.upload(await shrinkImage(blob));return r&&r.url?r.url:null}catch(e){return null}}
+const IMG_REF=/\/(?:_blob|api\/img)\/([A-Za-z0-9_-]{6,40})/g;
+function imgRefs(text){return new Set([...String(text||"").matchAll(IMG_REF)].map(m=>m[1]))}
+S.upl=new Set();
+async function storeImage(blob){if(!S.assets||!blob)return null;try{const r=await S.assets.upload(await shrinkImage(blob));const url=r&&r.url?r.url:null;if(url)imgRefs(url).forEach(x=>S.upl.add(x));return url}catch(e){return null}}
+async function cleanupImages(candidates,keepText,exceptNoteId){
+  // Xoá ảnh không còn ghi chú nào dùng. Bản Cloudflare tự dọn ở máy chủ nên bỏ qua ở đây.
+  if(!S.assets||typeof S.assets.delete!=="function")return;
+  const keep=imgRefs(keepText);const used=new Set();
+  S.notes.forEach(n=>{if(n.id!==exceptNoteId)imgRefs(n.content).forEach(x=>used.add(x))});
+  for(const id of candidates){if(keep.has(id)||used.has(id))continue;try{await S.assets.delete(id)}catch(e){}}
+}
 async function resolveImages(md,images,onProg){
   let lost=0;
   for(let i=0;i<(images||[]).length;i++){
@@ -2549,7 +2570,7 @@ async function openNew(){if(!S.canWrite)return;const sec=S.section;if(!(await gu
 async function switchSection(sec){if(sec===S.section&&!route().t&&!S.editing&&!S.qedit&&!S.run&&!S.vs&&!S.vedit){closeDrawer();return}if(!(await guard()))return;S.section=sec;S.kind="all";S.subject=null;S.tag=null;S.q="";$("#q").value="";clearHash();closeDrawer();refresh(true);$("#list").scrollTop=0}
 async function togglePin(id){const n=S.notes.find(x=>x.id===id);if(!n)return;const d=Object.assign({},n,{pinned:!n.pinned});if(await Store.save(d)){toast(d.pinned?"Đã ghim":"Đã bỏ ghim");refresh()}}
 async function markReviewed(id){const n=S.notes.find(x=>x.id===id);if(!n)return;const d=Object.assign({},n,{reviews:(n.reviews||0)+1,lastReviewedAt:Date.now()});if(await Store.save(d)){toast("Tuyệt! Đã ghi nhận lần ôn thứ "+d.reviews);refresh()}}
-async function delNote(id){const n=S.notes.find(x=>x.id===id);if(!n)return;if(!(await confirmBox("Xoá ghi chú này?",`“${n.title}” sẽ bị xoá vĩnh viễn và không khôi phục được.`)))return;if(await Store.remove(id)){clearHash();refresh(true);toast("Đã xoá ghi chú")}}
+async function delNote(id){const n=S.notes.find(x=>x.id===id);if(!n)return;if(!(await confirmBox("Xoá ghi chú này?",`“${n.title}” sẽ bị xoá vĩnh viễn và không khôi phục được.`)))return;if(await Store.remove(id)){clearHash();refresh(true);toast("Đã xoá ghi chú");cleanupImages(imgRefs(n.content),"",id)}}
 async function dupNote(id){const n=S.notes.find(x=>x.id===id);if(!n)return;const now=Date.now();const d=Object.assign({},n,{id:uid(),title:n.title+" (bản sao)",pinned:false,reviews:0,createdAt:now,updatedAt:now});delete d.lastReviewedAt;if(await Store.save(d)){toast("Đã tạo bản sao");location.hash="note-"+d.id}}
 async function delQuiz(id){const z=S.quizzes.find(x=>x.id===id);if(!z)return;const at=S.attempts.filter(a=>a.quizId===id);
   if(!(await confirmBox("Xoá bộ đề này?",`“${z.title}”${at.length?` và ${at.length} lượt làm bài`:""} sẽ bị xoá vĩnh viễn.`)))return;
