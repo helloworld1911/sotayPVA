@@ -192,7 +192,10 @@ article.md.sans{font-family:var(--f-ui);line-height:1.68}
 .md th,.md td{padding:10px 13px;text-align:left;vertical-align:top;border-bottom:1px solid var(--line)}
 .md th{background:var(--surface-2);font-weight:700;font-size:.92em}
 .md tr:last-child td{border-bottom:0}
-.md img{border-radius:10px}
+.md img{display:block;max-width:100%;height:auto;margin:1em auto;border-radius:10px;border:1px solid var(--line);background:#fff;cursor:zoom-in}
+.lightbox{padding:24px;flex-direction:column;cursor:zoom-out}
+.lightbox img{max-width:min(1400px,100%);max-height:calc(100vh - 80px);border-radius:12px;background:#fff;box-shadow:var(--shadow)}
+.lightbox .ibtn{position:fixed;top:calc(12px + env(safe-area-inset-top,0px));right:calc(12px + env(safe-area-inset-right,0px));background:var(--surface);color:var(--ink)}
 .selftest .md strong{background:var(--ink);color:transparent;cursor:pointer;border-radius:4px;transition:background .2s,color .2s;user-select:none}
 .selftest .md strong *{color:transparent!important}
 .selftest .md strong:hover{background:color-mix(in srgb,var(--ink) 80%,var(--accent))}
@@ -786,6 +789,7 @@ body.dropping .notepane::after{content:"Thả tệp vào đây để nhập thà
     if(!me)return new Promise(()=>{});
     if(name==="db")return db;
     if(name==="user")return user;
+    if(name==="assets")return{async upload(blob){const r=await fetch("/api/img",{method:"POST",credentials:"same-origin",headers:{"content-type":blob.type||"application/octet-stream"},body:blob});const j=await r.json().catch(()=>({}));if(!r.ok)throw{code:"invalid_argument",message:j.error||"upload"};return j}};
     if(name==="sample"){if(!me.ai)return null;const f=(i,o)=>ask(i,o,false);f.json=(i,o)=>ask(i,o,true);f.limits=async()=>({maxPromptBytes:262144});return f}
     return null;
   }};
@@ -904,9 +908,9 @@ function fail(e){
 
 async function boot(){
   refresh(true);
-  let db=null,user=null,sample=null;
-  try{if(window.claude&&typeof window.claude.use==="function"){[db,user,sample]=await Promise.all([window.claude.use("db"),window.claude.use("user"),window.claude.use("sample")])}}catch(e){}
-  S.sample=typeof sample==="function"?sample:null;
+  let db=null,user=null,sample=null,assets=null;
+  try{if(window.claude&&typeof window.claude.use==="function"){[db,user,sample,assets]=await Promise.all([window.claude.use("db"),window.claude.use("user"),window.claude.use("sample"),window.claude.use("assets")])}}catch(e){}
+  S.sample=typeof sample==="function"?sample:null;S.assets=assets&&typeof assets.upload==="function"?assets:null;
   if(db){
     S.db=db;S.mode="db";
     try{if(user){const own=await user.isOwner();const ce=await user.canEdit();S.canWrite=!!(own||ce)}}catch(e){}
@@ -1128,7 +1132,7 @@ function openEditor(n){
             <button data-md="h2" title="Tiêu đề mục">H2</button><button data-md="h3" title="Tiêu đề nhỏ">H3</button>
             <button data-md="b" title="In đậm: được tô vàng khi đọc và bị che khi tự nhớ lại"><b>B</b></button><button data-md="i" title="In nghiêng"><i>I</i></button>
             <button data-md="ul" title="Danh sách">• —</button><button data-md="ol" title="Danh sách số">1.</button>
-            <button data-md="q" title="Ghi chú nổi bật">❝</button><button data-md="table" title="Chèn bảng">Bảng</button><button data-md="code" title="Mã">&lt;/&gt;</button>
+            <button data-md="q" title="Ghi chú nổi bật">❝</button><button data-md="table" title="Chèn bảng">Bảng</button><button data-md="code" title="Mã">&lt;/&gt;</button>${S.assets?`<button data-md="img" title="Chèn ảnh (hoặc dán ảnh bằng ⌘V)">Ảnh</button>`:""}
             <span class="sp"></span><button data-e="import" title="Nhập tệp Word, PDF, Markdown hoặc .txt">${icon("upload")}Nhập tệp</button>
           </div>
           <textarea class="mdin" id="eContent" placeholder="Viết hoặc dán nội dung bài học.&#10;&#10;## Tiêu đề mục&#10;- Ý chính với **từ khoá quan trọng**&#10;> Lưu ý thi cử" spellcheck="false">${esc(n.content)}</textarea>
@@ -1142,7 +1146,7 @@ function openEditor(n){
   P.oninput=()=>{if(!S.editing)return;markDirty();clearTimeout(t);t=setTimeout(upd,160)};
   const wrap=(a,b,ph)=>{const s=ta.selectionStart,e=ta.selectionEnd,sel=ta.value.slice(s,e)||ph;ta.setRangeText(a+sel+b,s,e,"end");ta.selectionStart=s+a.length;ta.selectionEnd=s+a.length+sel.length;ta.focus();ta.dispatchEvent(new Event("input",{bubbles:true}))};
   const line=p=>{const s=ta.selectionStart,e=ta.selectionEnd,ls=ta.value.lastIndexOf("\n",s-1)+1,chunk=ta.value.slice(ls,e);const out=chunk.split("\n").map((l,i)=>(typeof p==="function"?p(i):p)+l).join("\n");ta.setRangeText(out,ls,e,"end");ta.focus();ta.dispatchEvent(new Event("input",{bubbles:true}))};
-  const md={h2:()=>line("## "),h3:()=>line("### "),b:()=>wrap("**","**","ý quan trọng"),i:()=>wrap("_","_","nghiêng"),ul:()=>line("- "),ol:()=>line(i=>(i+1)+". "),q:()=>line("> "),code:()=>wrap("`","`","code"),table:()=>wrap("\n| Khái niệm | Ý nghĩa |\n|---|---|\n| ","  |  |\n","nội dung")};
+  const md={img:()=>{pickFile("image/*").then(async f=>{if(!f||!S.editing)return;toast("Đang tải ảnh…");const url=await storeImage(f);if(!url){toast("Không tải được ảnh.");return}const p=ta.selectionStart;ta.setRangeText(`\n![](${url})\n`,p,ta.selectionEnd,"end");ta.focus();ta.dispatchEvent(new Event("input",{bubbles:true}))})},h2:()=>line("## "),h3:()=>line("### "),b:()=>wrap("**","**","ý quan trọng"),i:()=>wrap("_","_","nghiêng"),ul:()=>line("- "),ol:()=>line(i=>(i+1)+". "),q:()=>line("> "),code:()=>wrap("`","`","code"),table:()=>wrap("\n| Khái niệm | Ý nghĩa |\n|---|---|\n| ","  |  |\n","nội dung")};
   P.onclick=e=>{
     if(!S.editing)return;
     const m=e.target.closest("[data-md]");if(m){md[m.dataset.md]();return}
@@ -1151,9 +1155,10 @@ function openEditor(n){
     if(a==="cancel")closeEditor();
     else if(a==="save")saveEditor();
     else if(a==="split"){S.split=!S.split;LS.set("split",S.split);$("#editor").classList.toggle("split",S.split);b.classList.toggle("on",S.split);upd()}
-    else if(a==="import"){pickFile(NOTE_ACCEPT).then(async f=>{if(!f||!S.editing)return;toast("Đang đọc "+f.name+"…");try{const r=await fileToMarkdown(f);if(!S.editing)return;ta.value=ta.value.trim()?ta.value+"\n\n"+r.md:r.md;if(!$("#eTitle").value.trim())$("#eTitle").value=r.title;markDirty();upd();toast("Đã nhập "+f.name)}catch(err){toast(err&&err.message&&err.message!=="load"?err.message:"Không đọc được tệp này.")}})}
+    else if(a==="import"){pickFile(NOTE_ACCEPT).then(async f=>{if(!f||!S.editing)return;toast("Đang đọc "+f.name+"…");try{let r=await fileToMarkdown(f);if(!S.editing)return;if(r.images.length){toast(`Đang tải ${r.images.length} ảnh…`);const rr=await resolveImages(r.md,r.images);r.md=rr.md;if(rr.lost)toast(`${rr.lost} ảnh chưa lưu được`)}if(!S.editing)return;ta.value=ta.value.trim()?ta.value+"\n\n"+r.md:r.md;if(!$("#eTitle").value.trim())$("#eTitle").value=r.title;markDirty();upd();toast("Đã nhập "+f.name)}catch(err){toast(err&&err.message&&err.message!=="load"?err.message:"Không đọc được tệp này.")}})}
   };
   ta.addEventListener("keydown",e=>{if(e.key==="Tab"){e.preventDefault();ta.setRangeText("  ",ta.selectionStart,ta.selectionEnd,"end")}});
+  ta.addEventListener("paste",e=>{const it=[...((e.clipboardData&&e.clipboardData.items)||[])].find(x=>x.type&&x.type.startsWith("image/"));if(!it||!S.assets)return;e.preventDefault();const f=it.getAsFile();toast("Đang tải ảnh…");storeImage(f).then(url=>{if(!url){toast("Không tải được ảnh.");return}ta.setRangeText(`\n![](${url})\n`,ta.selectionStart,ta.selectionEnd,"end");ta.dispatchEvent(new Event("input",{bubbles:true}))})});
   (isNew?$("#eTitle"):ta).focus();
 }
 async function closeEditor(force){
@@ -2305,6 +2310,27 @@ function vKey(e,k){
 document.addEventListener("submit",e=>{if(e.target&&e.target.id==="lform"){e.preventDefault();vLearnSubmit()}});
 
 
+/* ---------- images ---------- */
+async function shrinkImage(blob){
+  try{
+    if(blob.size<350*1024||!/^image\/(png|jpe?g|webp|bmp)$/.test(blob.type)||typeof createImageBitmap!=="function")return blob;
+    const bmp=await createImageBitmap(blob);const sc=Math.min(1,1800/Math.max(bmp.width,bmp.height));const w=Math.round(bmp.width*sc),h=Math.round(bmp.height*sc);
+    const cv=document.createElement("canvas");cv.width=w;cv.height=h;const ctx=cv.getContext("2d");ctx.fillStyle="#fff";ctx.fillRect(0,0,w,h);ctx.drawImage(bmp,0,0,w,h);
+    const out=await new Promise(res=>cv.toBlob(res,"image/webp",.86));return out&&out.size<blob.size?out:blob;
+  }catch(e){return blob}
+}
+async function storeImage(blob){if(!S.assets||!blob)return null;try{const r=await S.assets.upload(await shrinkImage(blob));return r&&r.url?r.url:null}catch(e){return null}}
+async function resolveImages(md,images,onProg){
+  let lost=0;
+  for(let i=0;i<(images||[]).length;i++){
+    const ph="(stimg:"+i+")";if(!md.includes(ph))continue;
+    const url=await storeImage(images[i]);if(onProg)onProg();
+    if(url)md=md.split(ph).join("("+url+")");else{lost++;md=md.replace(new RegExp("!\\[[^\\]]*\\]\\(stimg:"+i+"\\)","g"),"")}
+  }
+  return {md:md.replace(/!\[[^\]]*\]\(stimg:\d+\)/g,"").replace(/\n{3,}/g,"\n\n"),lost};
+}
+function openLightbox(src){const s=document.createElement("div");s.className="scrim center lightbox";s.innerHTML=`<img src="${esc(src)}" alt=""><button class="ibtn" aria-label="Đóng">${icon("x")}</button>`;const close=()=>{s.remove();document.removeEventListener("keydown",k,true)};const k=e=>{if(e.key==="Escape"){e.stopPropagation();close()}};document.addEventListener("keydown",k,true);s.addEventListener("click",close);document.body.appendChild(s)}
+
 /* ---------- import files as notes ---------- */
 const NOTE_ACCEPT=".docx,.pdf,.md,.markdown,.txt,.html,.htm,text/plain,text/markdown,text/html,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 function mdInline(n){
@@ -2319,7 +2345,7 @@ function mdInline(n){
     else if(t==="CODE")s+=wrap(x,"`");
     else if(t==="A"){const h=c.getAttribute("href")||"";s+=/^https?:/i.test(h)&&x.trim()?`[${x.trim()}](${h})`:x}
     else if(t==="BR")s+="  \n";
-    else if(t==="IMG")continue;
+    else if(t==="IMG"){const src=c.getAttribute("src")||"";if(src&&!/^data:/i.test(src))s+=`\n\n![${(c.getAttribute("alt")||"").replace(/[\[\]\n]/g," ").trim()}](${src})\n\n`}
     else s+=x;
   }
   return s;
@@ -2354,7 +2380,8 @@ function mdBlocks(n){
     else if(t==="PRE")out.push("```\n"+c.textContent.replace(/\n+$/,"")+"\n```");
     else if(t==="HR")out.push("---");
     else if(t==="P"||(t==="DIV"&&!c.querySelector("p,div,ul,ol,table,h1,h2,h3,h4,blockquote,pre"))){const x=mdInline(c).trim();if(x)out.push(x)}
-    else if(t==="IMG"||t==="SCRIPT"||t==="STYLE")continue;
+    else if(t==="IMG"){const src=c.getAttribute("src")||"";if(src&&!/^data:/i.test(src))out.push(`![](${src})`)}
+    else if(t==="SCRIPT"||t==="STYLE")continue;
     else{const x=mdBlocks(c);if(x)out.push(x)}
   }
   return out.filter(Boolean).join("\n\n");
@@ -2375,12 +2402,15 @@ function pdfTextToMd(text){
   return out.join("\n\n").replace(/\n\n(- )/g,"\n$1");
 }
 async function fileToMarkdown(f){
-  const name=f.name.toLowerCase();
+  const name=f.name.toLowerCase(),images=[];
   if(f.size>15*1024*1024)throw new Error("Tệp quá lớn (tối đa 15 MB).");
   let md;
   if(name.endsWith(".docx")){
     await loadScript("https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js");
-    const r=await window.mammoth.convertToHtml({arrayBuffer:await f.arrayBuffer()},{convertImage:window.mammoth.images.imgElement(()=>Promise.resolve({src:""}))});
+    const r=await window.mammoth.convertToHtml({arrayBuffer:await f.arrayBuffer()},{convertImage:window.mammoth.images.imgElement(async image=>{
+      const ct=String(image.contentType||"").toLowerCase();if(!/^image\/(png|jpe?g|gif|webp|bmp|svg\+xml)$/.test(ct))return{src:""};
+      const b64=await image.read("base64");const bin=atob(b64);const u8=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)u8[i]=bin.charCodeAt(i);
+      images.push(new Blob([u8],{type:ct}));return{src:"stimg:"+(images.length-1)}})});
     md=htmlToMd(r.value);
   }else if(name.endsWith(".pdf"))md=pdfTextToMd(await fileToText(f));
   else if(/\.html?$/.test(name))md=htmlToMd(await f.text());
@@ -2389,7 +2419,8 @@ async function fileToMarkdown(f){
   md=String(md||"").replace(/\r\n?/g,"\n").trim();
   if(!md)throw new Error("Không tìm thấy chữ trong tệp (tệp scan dạng ảnh chưa đọc được).");
   const h=md.match(/^#{1,3}\s+(.+)$/m);
-  return {title:(h?h[1]:f.name.replace(/\.[^.]+$/,"")).replace(/[*_`]/g,"").trim().slice(0,160),md};
+  md=md.replace(/\n{3,}/g,"\n\n");
+  return {title:(h?h[1]:f.name.replace(/\.[^.]+$/,"")).replace(/[*_`]/g,"").trim().slice(0,160),md,images};
 }
 function splitMd(md,max=200000){
   if(new Blob([md]).size<=max)return [md];
@@ -2420,7 +2451,7 @@ function openNoteImport(initial){
   const listEl=$("#niList",s),go=$('[data-n="go"]',s),msg=$("#niMsg",s);
   const draw=()=>{
     listEl.innerHTML=items.map((it,i)=>`<div class="niitem ${it.st}"><span class="nist">${it.st==="ok"?icon("check"):it.st==="bad"?icon("warn"):`<span class="spin"></span>`}</span>
-      <span class="nimain">${it.st==="ok"?`<input value="${esc(it.title)}" data-ni="${i}" aria-label="Tiêu đề ghi chú" maxlength="160">`:`<b>${esc(it.file.name)}</b>`}<small>${it.st==="ok"?`${esc(it.file.name)} · ${words(it.md).toLocaleString("vi-VN")} từ`:it.st==="bad"?esc(it.err):"Đang đọc…"}</small></span>
+      <span class="nimain">${it.st==="ok"?`<input value="${esc(it.title)}" data-ni="${i}" aria-label="Tiêu đề ghi chú" maxlength="160">`:`<b>${esc(it.file.name)}</b>`}<small>${it.st==="ok"?`${esc(it.file.name)} · ${words(it.md).toLocaleString("vi-VN")} từ${it.images&&it.images.length?` · ${it.images.length} ảnh`:""}`:it.st==="bad"?esc(it.err):"Đang đọc…"}</small></span>
       <button class="ibtn" data-nx="${i}" type="button" aria-label="Bỏ tệp này">${icon("x")}</button></div>`).join("");
     const ok=items.filter(x=>x.st==="ok").length,busy=items.some(x=>x.st==="busy");
     $("#niMergeWrap",s).hidden=ok<2;
@@ -2428,7 +2459,7 @@ function openNoteImport(initial){
     go.innerHTML=`${icon("check")}${busy?"Đang đọc tệp…":$("#niMerge",s).checked&&ok>1?"Nhập thành 1 ghi chú":`Nhập ${ok||""} ghi chú`}`;
   };
   const add=files=>{for(const f of files){const it={file:f,st:"busy",title:"",md:"",err:""};items.push(it);
-      fileToMarkdown(f).then(r=>{it.st="ok";it.title=r.title;it.md=r.md}).catch(e=>{it.st="bad";it.err=e&&e.message&&e.message!=="load"?e.message:"Không đọc được tệp này."}).finally(draw)}
+      fileToMarkdown(f).then(r=>{it.st="ok";it.title=r.title;it.md=r.md;it.images=r.images||[]}).catch(e=>{it.st="bad";it.err=e&&e.message&&e.message!=="load"?e.message:"Không đọc được tệp này."}).finally(draw)}
     draw()};
   const pick=()=>{const fi=document.createElement("input");fi.type="file";fi.multiple=true;fi.accept=NOTE_ACCEPT;fi.onchange=()=>add([...fi.files]);fi.click()};
   const close=()=>{s.remove();document.removeEventListener("keydown",k,true)};
@@ -2447,6 +2478,9 @@ function openNoteImport(initial){
     if(b.dataset.n==="cancel"){close();return}
     const ok=items.filter(x=>x.st==="ok");if(!ok.length)return;
     const subject=$("#niSubj",s).value.trim(),tg=tagsOf($("#niTags",s).value),merge=$("#niMerge",s).checked&&ok.length>1;
+    b.disabled=true;let lost=0,doneImg=0;const imgTotal=ok.reduce((a,it)=>a+(it.images||[]).length,0);
+    if(imgTotal){msg.className="zmsg";msg.textContent=S.assets?`Đang tải ảnh 0/${imgTotal}…`:"";
+      for(const it of ok){const rr=await resolveImages(it.md,it.images,()=>{doneImg++;msg.textContent=`Đang tải ảnh ${doneImg}/${imgTotal}…`});it.md=rr.md;lost+=rr.lost;it.images=[]}}
     let notes=merge?[{title:ok[0].title,md:ok.map(it=>(/^#\s/m.test(it.md)?"":`# ${it.title}\n\n`)+it.md).join("\n\n---\n\n")}]:ok.map(it=>({title:it.title,md:it.md}));
     const docs=[];const now=Date.now();
     notes.forEach(n=>{const parts=splitMd(n.md);parts.forEach((p,i)=>docs.push({id:uid(),title:(n.title||"Ghi chú nhập từ tệp")+(parts.length>1?` (phần ${i+1})`:""),subject,tags:tg,content:p,pinned:false,reviews:0,createdAt:now+docs.length,updatedAt:now+docs.length}))});
@@ -2455,7 +2489,7 @@ function openNoteImport(initial){
     close();if(!saved)return;
     if(!(await guard()))return;S.section="notes";S.kind="all";S.tag=null;S.subject=subject||null;
     location.hash="note-"+docs[0].id;refresh(true);
-    toast(saved===1?"Đã nhập 1 ghi chú":`Đã nhập ${saved} ghi chú`);
+    toast((saved===1?"Đã nhập 1 ghi chú":`Đã nhập ${saved} ghi chú`)+(lost?` · ${lost} ảnh chưa lưu được`:imgTotal?` kèm ${imgTotal} ảnh`:""));
   });
   if(initial&&initial.length)add(initial);else draw();
 }
@@ -2596,6 +2630,7 @@ document.addEventListener("click",e=>{
     }
     return;
   }
+  const im=t.closest("#art img");if(im&&im.src){openLightbox(im.src);return}
   if(vClick(t))return;
   const strong=t.closest(".selftest #art strong");if(strong&&!strong.classList.contains("shown")){strong.classList.add("shown");updateSelfTest();return}
   const qo=t.closest("[data-qo]");if(qo){S.qo[qo.dataset.qo]=qo.dataset.v;LS.set("qopts",S.qo);renderPane(true);return}

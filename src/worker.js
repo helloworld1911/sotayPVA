@@ -52,6 +52,7 @@ function ensureDb(env) {
         env.DB.prepare("CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, username TEXT NOT NULL UNIQUE COLLATE NOCASE, name TEXT, pass TEXT NOT NULL, role TEXT NOT NULL DEFAULT 'user', created_at INTEGER NOT NULL)"),
         env.DB.prepare("CREATE TABLE IF NOT EXISTS udocs (uid TEXT NOT NULL, col TEXT NOT NULL, id TEXT NOT NULL, data TEXT NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY (uid, col, id))"),
         env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_udocs ON udocs (uid, col, updated_at)"),
+        env.DB.prepare("CREATE TABLE IF NOT EXISTS imgs (uid TEXT NOT NULL, id TEXT NOT NULL, type TEXT NOT NULL, data BLOB NOT NULL, size INTEGER NOT NULL, created_at INTEGER NOT NULL, PRIMARY KEY (uid, id))"),
       ]);
       if (!(await env.DB.prepare("SELECT v FROM meta WHERE k = 'secret'").first()))
         await env.DB.prepare("INSERT OR IGNORE INTO meta (k, v) VALUES ('secret', ?)").bind(randId(32)).run();
@@ -156,6 +157,28 @@ async function data(req, env, u, col, id) {
   return json({ error: "method_not_allowed" }, 405);
 }
 
+/* ---------- ảnh trong ghi chú (lưu trong D1, mỗi người chỉ xem được ảnh của mình) ---------- */
+const MAX_IMG = 1900 * 1024;
+const IMG_TYPES = /^image\/(png|jpeg|gif|webp|bmp|svg\+xml)$/;
+async function imgUpload(req, env, u) {
+  const type = (req.headers.get("content-type") || "").split(";")[0].trim().toLowerCase();
+  if (!IMG_TYPES.test(type)) return json({ error: "Chỉ nhận tệp ảnh (png, jpg, gif, webp)." }, 415);
+  const buf = await req.arrayBuffer();
+  if (!buf.byteLength) return json({ error: "Ảnh rỗng." }, 400);
+  if (buf.byteLength > MAX_IMG) return json({ error: "Ảnh quá lớn (tối đa khoảng 1,9 MB)." }, 413);
+  const id = randId(12);
+  await env.DB.prepare("INSERT INTO imgs (uid, id, type, data, size, created_at) VALUES (?, ?, ?, ?, ?, ?)")
+    .bind(u.id, id, type, buf, buf.byteLength, Date.now()).run();
+  return json({ id, url: "/api/img/" + id, sizeBytes: buf.byteLength, contentType: type });
+}
+async function imgGet(env, u, id) {
+  const row = await env.DB.prepare("SELECT type, data FROM imgs WHERE uid = ? AND id = ?").bind(u.id, id).first();
+  if (!row) return new Response("Not found", { status: 404 });
+  const headers = { "content-type": row.type, "cache-control": "private, max-age=31536000, immutable", "x-content-type-options": "nosniff" };
+  if (row.type === "image/svg+xml") headers["content-security-policy"] = "default-src 'none'; style-src 'unsafe-inline'";
+  return new Response(new Uint8Array(row.data), { headers });
+}
+
 /* ---------- Claude (tuỳ chọn) ---------- */
 async function ai(req, env) {
   if (!env.ANTHROPIC_API_KEY) return json({ error: "Chưa cấu hình Claude.", code: "sampling_disabled" }, 501);
@@ -197,6 +220,9 @@ export default {
       if (p === "/api/me") return json({ ok: true, user: pub(u), ai: !!env.ANTHROPIC_API_KEY });
       if (p === "/api/password" && req.method === "POST") return await changePassword(req, env, u);
       if (p === "/api/ai" && req.method === "POST") return await ai(req, env);
+      if (p === "/api/img" && req.method === "POST") return await imgUpload(req, env, u);
+      const im = p.match(/^\/api\/img\/([A-Za-z0-9_-]{6,40})$/);
+      if (im && req.method === "GET") return await imgGet(env, u, im[1]);
       const m = p.match(/^\/api\/data\/([a-z]+)(?:\/([^/]+))?$/);
       if (m && COLS.has(m[1])) return await data(req, env, u, m[1], m[2] ? decodeURIComponent(m[2]) : null);
       return json({ error: "not_found" }, 404);

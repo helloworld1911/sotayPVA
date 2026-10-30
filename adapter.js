@@ -85,6 +85,7 @@
     if(!me)return new Promise(()=>{});
     if(name==="db")return db;
     if(name==="user")return user;
+    if(name==="assets")return{async upload(blob){const r=await fetch("/api/img",{method:"POST",credentials:"same-origin",headers:{"content-type":blob.type||"application/octet-stream"},body:blob});const j=await r.json().catch(()=>({}));if(!r.ok)throw{code:"invalid_argument",message:j.error||"upload"};return j}};
     if(name==="sample"){if(!me.ai)return null;const f=(i,o)=>ask(i,o,false);f.json=(i,o)=>ask(i,o,true);f.limits=async()=>({maxPromptBytes:262144});return f}
     return null;
   }};
