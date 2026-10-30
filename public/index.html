@@ -1072,7 +1072,7 @@ function renderNote(n){
         <div style="min-width:0;display:flex;flex-direction:column;gap:22px">
           <details class="toc-inline" id="tocInline"><summary>Mục lục</summary><div id="tocI"></div></details>
           <article class="md${S.serif?"":" sans"}" id="art" style="--fs:${S.fs}px">${renderMd(n.content)}</article>
-          ${S.canWrite?`<div class="donebar"><span>${n.lastReviewedAt?"Lần ôn gần nhất: "+rel(n.lastReviewedAt):"Bạn chưa ôn ghi chú này lần nào."}</span><span class="actrow">${S.sample?`<button class="btn soft" data-act="genFromNote">${icon("spark")}Tạo bài kiểm tra</button>`:""}<button class="btn primary" data-act="review">${icon("check")}Đã ôn xong</button></span></div>`:""}
+          ${S.canWrite?`<div class="donebar"><span>${n.lastReviewedAt?"Lần ôn gần nhất: "+rel(n.lastReviewedAt):"Bạn chưa ôn ghi chú này lần nào."}</span><span class="actrow">${S.sample?`<button class="btn soft" data-act="genFromNote">${icon("spark")}Tạo bài kiểm tra</button>`:""}${vocabFromNote(n).length?`<button class="btn" data-act="noteDeck">${icon("cards")}${S.decks.some(d=>d.id===noteDeckId(n))?"Ôn bộ từ":"Tạo bộ từ"} (${vocabFromNote(n).length})</button>`:""}<button class="btn primary" data-act="review">${icon("check")}Đã ôn xong</button></span></div>`:""}
         </div>
         <aside class="toc-side" id="tocS"></aside>
       </div>
@@ -1815,7 +1815,7 @@ function vWelcome(){
     <p class="lead">Lật thẻ ghi nhớ, học theo vòng, làm bài kiểm tra và chơi ghép thẻ. Hệ thống tự nhắc từ nào đến hạn ôn lại để bạn nhớ lâu.</p></div>
     ${tot?`<div class="stats"><div class="card"><b>${tot}</b>thẻ từ vựng</div><div class="card"><b>${known}</b>đã thuộc</div><div class="card"><b>${dueN}</b>cần ôn hôm nay</div></div>`:""}
     ${dueDecks.length?`<div><p class="h3">Cần ôn hôm nay</p><div style="display:flex;flex-direction:column;gap:6px">${dueDecks.slice(0,6).map(([d,s])=>`<button class="dueitem" data-opend="${esc(d.id)}"><span class="dot" style="--c:${hue(subj(d))}"></span><span class="t">${esc(d.title)}</span><span class="w">${s.due} thẻ</span></button>`).join("")}</div></div>`:""}
-    ${S.canWrite?`<div class="actrow"><button class="btn primary lg" data-act="new">${icon("plus")}Bộ từ mới</button>${S.sample?`<button class="btn soft lg" data-vv="gentopic">${icon("spark")}Nhờ Claude tạo bộ từ theo chủ đề</button>`:""}</div>`:""}
+    ${S.canWrite?`<div class="actrow"><button class="btn primary lg" data-act="new">${icon("plus")}Bộ từ mới</button>${S.notes.some(n=>vocabFromNote(n).length)?`<button class="btn lg" data-vv="fromNotes">${icon("note")}Tạo bộ từ từ bảng trong ghi chú</button>`:""}${S.sample?`<button class="btn soft lg" data-vv="gentopic">${icon("spark")}Nhờ Claude tạo bộ từ theo chủ đề</button>`:""}</div>`:""}
     <div><p class="h3">Cách nhập nhanh</p>
       <p class="lead" style="font-size:14px;margin-bottom:10px">Mỗi dòng một từ. Ngăn cách từ và nghĩa bằng dấu “ - ”, “:”, “=” hoặc phím Tab. Danh sách xuất từ Quizlet dán vào được ngay. Phiên âm đặt trong dấu / / sẽ được tách riêng.</p>
       <pre class="tpl">${esc(VTPL)}</pre></div>
@@ -1835,7 +1835,7 @@ function vOverview(d){
     </div>
     <div class="nscroll"><div class="qwrap">
       <header class="dhead"><span class="chip" style="--c:${hue(s)}">${esc(s)}</span><h1>${esc(d.title||"Bộ từ không tên")}</h1>
-        <div class="dmeta"><span>${icon("cards")}${st.total} thẻ</span><span>${esc(LANGS[lang]||lang)}</span>${d.bestMatch?`<span>${icon("grid")}Ghép thẻ kỷ lục ${Number(d.bestMatch).toFixed(1)} giây</span>`:""}<span>${icon("clock")}${d.studiedAt?"Học lần cuối "+rel(d.studiedAt):"Chưa học lần nào"}</span></div></header>
+        <div class="dmeta"><span>${icon("cards")}${st.total} thẻ</span><span>${esc(LANGS[lang]||lang)}</span>${d.bestMatch?`<span>${icon("grid")}Ghép thẻ kỷ lục ${Number(d.bestMatch).toFixed(1)} giây</span>`:""}<span>${icon("clock")}${d.studiedAt?"Học lần cuối "+rel(d.studiedAt):"Chưa học lần nào"}</span>${d.sourceNoteId&&S.notes.some(x=>x.id===d.sourceNoteId)?`<button class="linkbtn" data-open="${esc(d.sourceNoteId)}">${icon("note")} Mở ghi chú gốc</button>`:""}</div></header>
       ${st.total?`<div style="display:flex;flex-direction:column;gap:10px"><div class="mbar"><i style="width:${st.known/st.total*100}%;background:var(--ok)"></i><i style="width:${st.learning/st.total*100}%;background:var(--warn)"></i></div>
         <div class="mleg"><span><i style="background:var(--ok)"></i>Đã thuộc ${st.known}</span><span><i style="background:var(--warn)"></i>Đang học ${st.learning}</span><span><i style="background:var(--line)"></i>Chưa học ${st.new}</span>${st.due?`<span style="color:var(--danger);font-weight:600">${icon("alarm")}${st.due} thẻ cần ôn hôm nay</span>`:""}</div></div>
       <div class="modes">
@@ -2239,6 +2239,7 @@ function vClick(t){
   const row=el.closest(".ve"),ci=row?+row.dataset.ci:-1;
   switch(a){
     case "gentopic":vGenTopic();break;
+    case "fromNotes":allNotesToDecks();break;
     case "edit":if(D)vOpenEdit(D);break;
     case "moreD":vMenu(el);break;
     case "mode":if(D){const m=el.dataset.m;if(m==="cards")vStartCards(D);else if(m==="learn")vStartLearn(D);else if(m==="test")vTestSetup(D);else if(m==="match")vStartMatch(D)}break;
@@ -2525,6 +2526,53 @@ document.addEventListener("dragover",e=>{if(S.section==="notes"&&S.canWrite&&!S.
 document.addEventListener("dragleave",e=>{if(!e.relatedTarget)document.body.classList.remove("dropping")});
 document.addEventListener("drop",e=>{document.body.classList.remove("dropping");if(S.section==="notes"&&S.canWrite&&!S.editing&&!document.querySelector(".scrim")&&e.dataTransfer&&e.dataTransfer.files.length){e.preventDefault();openNoteImport([...e.dataTransfer.files])}});
 
+/* ---------- note vocabulary table -> deck ---------- */
+function mdTables(md){
+  const groups=[];let cur=[];
+  for(const l of String(md||"").split("\n")){if(/^\s*\|.*\|\s*$/.test(l))cur.push(l.trim());else{if(cur.length>=3)groups.push(cur);cur=[]}}
+  if(cur.length>=3)groups.push(cur);
+  const cells=r=>r.replace(/\\\|/g,"\u0000").replace(/^\|/,"").replace(/\|$/,"").split("|").map(c=>c.replace(/\u0000/g,"|").replace(/\*\*|__|`/g,"").replace(/^_(.*)_$/,"$1").trim());
+  return groups.filter(g=>/^\|?\s*:?-{2,}/.test(g[1])).map(g=>({head:cells(g[0]),rows:g.slice(2).map(cells)}));
+}
+function vocabFromNote(n){
+  let best=null;
+  for(const t of mdTables(n&&n.content)){
+    const h=t.head.map(x=>norm(x));
+    const ti=h.findIndex(x=>/thuat ngu|tu vung|\bterm\b|english|tieng anh|\bword\b|vocabulary|^tu$|^tu moi/.test(x));
+    const di=h.findIndex((x,i)=>i!==ti&&/nghia|meaning|tieng viet|vietnamese|dinh nghia|giai thich|definition/.test(x));
+    if(ti>=0&&di>=0)best={t,ti,di,pi:h.findIndex(x=>/phien am|\bipa\b|pronunciation|phat am/.test(x)),ei:h.findIndex(x=>/vi du|example/.test(x))};
+  }
+  if(!best)return [];
+  const {t,ti,di,pi,ei}=best;
+  return t.rows.map(r=>({t:(r[ti]||"").trim(),d:(r[di]||"").trim(),ph:pi>=0?(r[pi]||"").trim():"",ex:ei>=0?(r[ei]||"").trim():""})).filter(c=>c.t&&c.d);
+}
+const noteDeckId=n=>"dn-"+String(n.id).replace(/[^A-Za-z0-9_-]/g,"").slice(0,80);
+async function deckFromNote(n,silent){
+  const items=vocabFromNote(n);
+  if(!items.length){if(!silent)toast("Ghi chú này chưa có bảng từ vựng (cần một cột Thuật ngữ/Từ và một cột Nghĩa).");return null}
+  const id=noteDeckId(n),old=S.decks.find(d=>d.id===id),now=Date.now();
+  const oldBy=new Map(((old&&old.cards)||[]).map(c=>[ansNorm(c.t),c]));const seen=new Set(),cards=[];
+  for(const it of items){const k=ansNorm(it.t);if(!k||seen.has(k))continue;seen.add(k);const o=oldBy.get(k);
+    cards.push(o?Object.assign({},o,{t:it.t,d:it.d,ph:it.ph||o.ph||"",ex:it.ex||o.ex||""}):{id:uid("c"),t:it.t,d:it.d,ph:it.ph,ex:it.ex})}
+  if(old)(old.cards||[]).forEach(c=>{if(!seen.has(ansNorm(c.t)))cards.push(c)});
+  const doc=Object.assign({},old?JSON.parse(JSON.stringify(old)):{},{id,title:"Từ vựng · "+(n.title||"Ghi chú"),subject:n.subject||"Tiếng Anh",lang:(old&&old.lang)||"en-US",cards,sourceNoteId:n.id,createdAt:old?old.createdAt:now,updatedAt:now});
+  if(new Blob([JSON.stringify(doc)]).size>250000){if(!silent)toast("Bảng từ vựng quá lớn cho một bộ từ.");return null}
+  return (await Store.put("decks",doc))?{doc,count:cards.length,added:items.length,isNew:!old}:null;
+}
+async function noteToDeck(n){
+  const r=await deckFromNote(n);if(!r)return;
+  toast(r.isNew?`Đã tạo bộ từ ${r.count} thẻ`:`Đã cập nhật bộ từ (${r.count} thẻ, giữ nguyên tiến độ học)`);
+  openDeck(r.doc.id);
+}
+async function allNotesToDecks(){
+  const ns=S.notes.filter(n=>vocabFromNote(n).length);
+  if(!ns.length){toast("Chưa có ghi chú nào có bảng từ vựng.");return}
+  let made=0,upd=0,cards=0;
+  for(const n of ns){const r=await deckFromNote(n,true);if(r){r.isNew?made++:upd++;cards+=r.count}}
+  refresh(true);
+  toast(`Xong: ${made} bộ từ mới${upd?`, ${upd} bộ được cập nhật`:""} · ${cards} thẻ`);
+}
+
 /* ---------- palette ---------- */
 function openPalette(){
   if($(".palette"))return;closeDrawer();
@@ -2589,11 +2637,12 @@ function openMenu(btn){
   m.innerHTML=`<div class="fs"><span>Cỡ chữ</span><button data-m="fs-">A−</button><button data-m="fs+">A+</button></div>
     <button data-m="font">${icon("type")}${S.serif?"Chữ không chân":"Chữ có chân (dễ đọc)"}</button>
     ${S.canWrite&&S.sample?`<div class="sep"></div><button data-m="gen">${icon("spark")}Tạo bài kiểm tra từ ghi chú</button>`:""}
+    ${S.canWrite&&vocabFromNote(n).length?`<div class="sep"></div><button data-m="vdeck">${icon("cards")}Tạo bộ từ từ bảng từ vựng</button>`:""}
     ${S.canWrite?`<div class="sep"></div><button data-m="dup">${icon("copy")}Nhân bản</button><button data-m="del" class="danger">${icon("trash")}Xoá ghi chú</button>`:""}`;
   btn.parentElement.appendChild(m);
   m.addEventListener("click",e=>{const b=e.target.closest("[data-m]");if(!b)return;e.stopPropagation();const a=b.dataset.m;
     if(a==="fs-"||a==="fs+"){S.fs=Math.max(14,Math.min(23,S.fs+(a==="fs+"?1:-1)));LS.set("fs",S.fs);const art=$("#art");if(art)art.style.setProperty("--fs",S.fs+"px");return}
-    closeMenu();if(a==="font"){S.serif=!S.serif;LS.set("serif",S.serif);$("#art")?.classList.toggle("sans",!S.serif)}if(a==="gen")openGenDialog(n.id);if(a==="dup")dupNote(n.id);if(a==="del")delNote(n.id)});
+    closeMenu();if(a==="font"){S.serif=!S.serif;LS.set("serif",S.serif);$("#art")?.classList.toggle("sans",!S.serif)}if(a==="gen")openGenDialog(n.id);if(a==="vdeck")noteToDeck(n);if(a==="dup")dupNote(n.id);if(a==="del")delNote(n.id)});
 }
 function openQMenu(btn){
   closeMenu();const z=selQuiz();if(!z)return;
@@ -2681,6 +2730,7 @@ document.addEventListener("click",e=>{
     case "more":openMenu(a);break;
     case "moreQ":openQMenu(a);break;
     case "genFromNote":openGenDialog(selNote()?.id);break;
+    case "noteDeck":{const n=selNote();if(n)noteToDeck(n);break}
   }
 });
 document.addEventListener("input",e=>{
