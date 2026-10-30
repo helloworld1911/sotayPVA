@@ -1,0 +1,19 @@
+name = "so-tay-on-tap"
+main = "src/worker.js"
+compatibility_date = "2025-10-01"
+
+# Trang web (index.html) nằm trong thư mục public
+[assets]
+directory = "./public"
+binding = "ASSETS"
+run_worker_first = ["/api/*"]
+
+# Cơ sở dữ liệu D1. Thay database_id bằng mã bạn nhận được ở Bước 4 trong README.
+[[d1_databases]]
+binding = "DB"
+database_name = "so-tay-db"
+database_id = "DIEN_DATABASE_ID_VAO_DAY"
+
+# Model Claude dùng cho các nút "Nhờ Claude" (chỉ chạy khi bạn đặt ANTHROPIC_API_KEY)
+[vars]
+AI_MODEL = "claude-sonnet-5-5"

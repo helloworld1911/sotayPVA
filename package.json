@@ -1,0 +1,16 @@
+{
+  "name": "so-tay-on-tap",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "db:schema": "wrangler d1 execute so-tay-db --remote --file=schema.sql",
+    "db:seed": "wrangler d1 execute so-tay-db --remote --file=seed.sql",
+    "db:backup": "wrangler d1 export so-tay-db --remote --output=backup.sql",
+    "db:local": "wrangler d1 execute so-tay-db --local --file=schema.sql && wrangler d1 execute so-tay-db --local --file=seed.sql"
+  },
+  "devDependencies": {
+    "wrangler": "^4.20.0"
+  }
+}
