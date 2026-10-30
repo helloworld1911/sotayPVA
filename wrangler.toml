@@ -1,4 +1,4 @@
-name = "so-tay-on-tap"
+name = "sotaypva"
 main = "src/worker.js"
 compatibility_date = "2025-10-01"
 
