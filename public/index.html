@@ -557,6 +557,9 @@ pre.tpl{background:var(--surface-2);border:1px solid var(--line);border-radius:1
 @keyframes spin{to{transform:rotate(360deg)}}
 .nimerge{display:flex;align-items:center;gap:8px;font-size:13.5px}
 body.dropping .notepane::after{content:"Thả tệp vào đây để nhập thành ghi chú";position:fixed;inset:12px;border:2px dashed var(--accent);border-radius:20px;background:color-mix(in srgb,var(--accent-soft) 85%,transparent);display:grid;place-items:center;font-family:var(--f-display);font-weight:800;font-size:20px;color:var(--accent);z-index:70;pointer-events:none}
+.seg3{display:inline-flex;gap:2px;padding:3px;border-radius:10px;background:color-mix(in srgb,var(--ink) 7%,transparent)}
+.seg3 button{border:0;background:none;height:28px;padding:0 10px;border-radius:7px;font-size:12.5px;font-weight:600;color:var(--muted);white-space:nowrap}
+.seg3 button.on{background:var(--surface);color:var(--ink);box-shadow:var(--shadow)}
 /* overlays */
 .scrim{position:fixed;inset:0;z-index:60;background:color-mix(in srgb,#0B0F18 45%,transparent);display:flex;align-items:flex-start;justify-content:center;padding:calc(10vh + env(safe-area-inset-top,0px)) 16px 16px}
 .scrim.center{align-items:center;padding-top:16px}
@@ -1840,7 +1843,7 @@ function vOverview(d){
         <div class="mleg"><span><i style="background:var(--ok)"></i>Đã thuộc ${st.known}</span><span><i style="background:var(--warn)"></i>Đang học ${st.learning}</span><span><i style="background:var(--line)"></i>Chưa học ${st.new}</span>${st.due?`<span style="color:var(--danger);font-weight:600">${icon("alarm")}${st.due} thẻ cần ôn hôm nay</span>`:""}</div></div>
       <div class="modes">
         <button class="mode" data-vv="mode" data-m="cards">${icon("cards")}<b>Thẻ ghi nhớ</b><small>Lật thẻ và tự đánh giá đã thuộc hay chưa</small></button>
-        <button class="mode" data-vv="mode" data-m="learn">${icon("brain")}<b>Học</b><small>Chọn nghĩa rồi tự viết lại từ, lặp đến khi thuộc${st.due?` · ưu tiên ${st.due} thẻ đến hạn`:""}</small></button>
+        <button class="mode" data-vv="mode" data-m="learn">${icon("brain")}<b>Học</b><small>${{mc:"Chỉ trắc nghiệm: chọn nghĩa đúng, lặp đến khi thuộc",wr:"Chỉ tự luận: gõ lại từ theo nghĩa, lặp đến khi thuộc",mix:"Chọn nghĩa rồi tự viết lại từ, lặp đến khi thuộc"}[S.vopt.learnType||"mix"]}${st.due?` · ưu tiên ${st.due} thẻ đến hạn`:""}</small></button>
         <button class="mode" data-vv="mode" data-m="test" ${ok2?"":"disabled"}>${icon("quiz")}<b>Kiểm tra</b><small>Trắc nghiệm, tự viết, đúng/sai, ghép cặp</small></button>
         <button class="mode" data-vv="mode" data-m="match" ${ok2?"":"disabled"}>${icon("grid")}<b>Ghép thẻ</b><small>Ghép từ với nghĩa nhanh nhất có thể</small></button>
       </div>
@@ -1927,7 +1930,8 @@ function vStartLearn(d,subset){
   const batch=cs.slice().sort((a,b)=>pri(a)-pri(b)).slice(0,10);
   const multi=(d.cards||[]).filter(c=>c.t&&c.d).length>=2;
   if(S.vtimer){clearInterval(S.vtimer);S.vtimer=null}
-  S.vs={deckId:d.id,deck:d,mode:"learn",queue:batch.map(c=>({id:c.id,stage:multi?0:1,miss:false})),total:batch.length,done:0,cur:null,fb:null,finished:false,opts:[]};
+  const lt=S.vopt.learnType||"mix",start=(lt==="wr"||!multi)?1:0,goal=(lt==="mc"&&multi)?1:2;
+  S.vs={deckId:d.id,deck:d,mode:"learn",lt,goal,subset:subset||null,queue:batch.map(c=>({id:c.id,stage:start,miss:false})),total:batch.length,done:0,cur:null,fb:null,finished:false,opts:[]};
   vEnter();vNextLearn()}
 function vNextLearn(){const V=S.vs;if(!V||V.mode!=="learn")return;V.fb=null;V.cur=null;
   while(V.queue.length&&!V.cur){const it=V.queue.shift();const c=V.deck.cards.find(x=>x.id===it.id);if(c){it.c=c;V.cur=it}}
@@ -1937,7 +1941,8 @@ function vNextLearn(){const V=S.vs;if(!V||V.mode!=="learn")return;V.fb=null;V.cu
   vRender(true);
   if(it.stage===1)setTimeout(()=>{const i=$("#lin");if(i&&!i.disabled)i.focus()},30);else vAutoSay()}
 function vLearnHtml(V){
-  const d=V.deck,extra=`<span class="timer">${V.done}/${V.total}</span>`;
+  const d=V.deck,lt=V.lt||"mix";
+  const extra=`<div class="seg3" role="group" aria-label="Kiểu câu hỏi">${[["mc","Trắc nghiệm"],["wr","Tự luận"],["mix","Kết hợp"]].map(([k,l])=>`<button class="${lt===k?"on":""}" data-vv="ltype" data-val="${k}" aria-pressed="${lt===k}">${l}</button>`).join("")}</div><span class="timer">${V.done}/${V.total}</span>`;
   if(V.finished){const left=(d.cards||[]).filter(c=>c.t&&c.d&&(lvl(c)!=="known"||((c.box||0)>0&&(c.due||0)<=Date.now()))).length;
     return [`<div class="lwrap"><section class="rhero"><div class="ring" style="--p:100;--rc:var(--ok)"><div><b>${V.total}</b><span>thẻ đã học</span></div></div><div class="rtext"><h1>Hoàn thành lượt học!</h1><p>${left?`Bộ từ còn ${left} thẻ chưa thuộc hoặc đến hạn ôn.`:"Bạn đã thuộc toàn bộ thẻ trong bộ này."}</p>
       <div class="actrow">${left?`<button class="btn primary" data-vv="lmore">${icon("brain")}Học tiếp ${Math.min(10,left)} thẻ</button>`:""}<button class="btn" data-vv="toTest">${icon("quiz")}Làm bài kiểm tra</button><button class="btn ghost" data-vv="vdone">Về bộ từ</button></div></div></section></div>`,extra]}
@@ -1952,14 +1957,14 @@ function vLearnHtml(V){
   if(fb)html+=fb.ok?`<div class="fb ok" aria-live="polite"><div class="v">${icon("check")}${fb.close?"Gần đúng! Chú ý chính tả: "+esc(c.t):"Chính xác!"}</div></div>`
     :`<div class="fb bad" aria-live="polite"><div class="v">${icon("x")}Chưa đúng</div><div>Đáp án: <b>${esc(it.stage===0?c.d:c.t)}</b>${it.stage===1&&fb.given?` · Bạn viết: <s>${esc(fb.given)}</s>`:""}</div>${c.ex?`<div style="font-style:italic;color:var(--muted)">${esc(c.ex)}</div>`:""}
       <div class="actrow"><button class="btn primary" data-vv="lnext" id="lnextBtn">Tiếp tục${icon("next")}</button>${it.stage===1&&fb.given?`<button class="btn ghost" data-vv="lover">Tôi trả lời đúng</button>`:""}</div></div>`;
-  return [`<div class="lwrap">${html}<p class="keyhint">${it.stage===0?"Phím <kbd>1</kbd>–<kbd>4</kbd> để chọn":"<kbd>Enter</kbd> để trả lời"} · Mỗi thẻ cần đúng cả phần chọn nghĩa và phần tự viết.</p></div>`,extra];
+  return [`<div class="lwrap">${html}<p class="keyhint">${it.stage===0?"Phím <kbd>1</kbd>–<kbd>4</kbd> để chọn":"<kbd>Enter</kbd> để trả lời"} ${lt==="mix"?" · Mỗi thẻ cần đúng cả phần chọn nghĩa và phần tự viết.":lt==="mc"?" · Chế độ chỉ trắc nghiệm.":" · Chế độ chỉ tự luận: gõ lại từ theo nghĩa."}</p></div>`,extra];
 }
 function vLearnPick(id){const V=S.vs;if(!V||!V.cur||V.fb)return;const pick=V.deck.cards.find(x=>x.id===id);const ok=id===V.cur.c.id||(pick&&ansNorm(pick.d)===ansNorm(V.cur.c.d));
   if(ok)vLearnOk(false,"");else{V.fb={ok:false,given:id};vRender(false);$("#lnextBtn")?.focus()}}
 function vLearnSubmit(){const V=S.vs;if(!V||!V.cur||V.fb)return;const inp=$("#lin");if(!inp)return;const g=inp.value;if(!g.trim()){inp.focus();return}
   const r=checkAns(g,V.cur.c.t);if(r)vLearnOk(r==="close",g);else{V.fb={ok:false,given:g};vRender(false);$("#lnextBtn")?.focus()}}
 function vLearnOk(close,given){const V=S.vs,it=V.cur;V.fb={ok:true,close,given:given||""};it.stage++;
-  if(it.stage>=2){V.done++;const c=it.c;if(it.miss){c.box=1;c.due=Date.now()+INTERVAL[1];c.seen=(c.seen||0)+1}else grade(c,true);vSaveSoon(V.deck)}
+  if(it.stage>=V.goal){V.done++;const c=it.c;if(it.miss){c.box=1;c.due=Date.now()+INTERVAL[1];c.seen=(c.seen||0)+1}else grade(c,true);vSaveSoon(V.deck)}
   else V.queue.splice(Math.min(V.queue.length,2),0,it);
   vRender(false);
   setTimeout(()=>{if(S.vs===V&&V.cur===it&&V.fb&&V.fb.ok)vNextLearn()},close?1800:850)}
@@ -2012,9 +2017,10 @@ function vTestHtml(V){
     const ty=[["mc","Trắc nghiệm","4 lựa chọn"],["wr","Tự viết","gõ đáp án"],["tf","Đúng / Sai","từ và nghĩa có khớp?"],["mt","Ghép cặp","nối từ với nghĩa"]];
     return [`<div class="qwrap"><header class="dhead"><h1>Thiết lập bài kiểm tra</h1><div class="dmeta"><span>${n} thẻ có thể dùng</span></div></header>
       <section class="startcard"><div class="optgrid">
+        <div class="og"><span class="glabel">Kiểu bài</span><div class="chips">${(()=>{const ty=o.types,pre=ty.mc&&!ty.wr&&!ty.tf&&!ty.mt?"mc":ty.wr&&!ty.mc&&!ty.tf&&!ty.mt?"wr":ty.mc&&ty.wr?"mix":"";return [["mc","Chỉ trắc nghiệm"],["wr","Chỉ tự luận"],["mix","Kết hợp"]].map(([k,l])=>`<button class="ch${pre===k?" on":""}" data-vv="tpreset" data-val="${k}">${l}</button>`).join("")})()}</div></div>
         <div class="og"><span class="glabel">Số câu</span><div class="chips">${counts.map(c=>`<button class="ch${!cAll&&+o.count===c?" on":""}" data-vv="topt" data-k="count" data-val="${c}">${c} câu</button>`).join("")}<button class="ch${cAll?" on":""}" data-vv="topt" data-k="count" data-val="all">Tất cả (${n})</button></div></div>
         <div class="og"><span class="glabel">Trả lời bằng</span><div class="chips">${[["term","Từ "+langName(V.deck.lang)],["def","Nghĩa tiếng Việt"],["mix","Cả hai"]].map(([k,l])=>`<button class="ch${o.dir===k?" on":""}" data-vv="topt" data-k="dir" data-val="${k}">${esc(l)}</button>`).join("")}</div></div>
-        <div class="og"><span class="glabel">Dạng câu hỏi</span>${ty.map(([k,l,s])=>`<button class="tg" data-vv="topt" data-k="type" data-val="${k}" aria-pressed="${!!o.types[k]}"><span class="sw"></span>${l}<small style="color:var(--faint)"> · ${s}</small></button>`).join("")}</div>
+        <div class="og"><span class="glabel">Tuỳ chỉnh dạng câu hỏi</span>${ty.map(([k,l,s])=>`<button class="tg" data-vv="topt" data-k="type" data-val="${k}" aria-pressed="${!!o.types[k]}"><span class="sw"></span>${l}<small style="color:var(--faint)"> · ${s}</small></button>`).join("")}</div>
       </div><div class="startrow"><button class="btn primary lg" data-vv="tstart">${icon("play")}Bắt đầu kiểm tra</button></div></section>
       ${(V.deck.tests||[]).length?`<div><p class="h3">Kết quả các lần trước</p><div class="hist">${V.deck.tests.slice(0,8).map(vHistRow).join("")}</div></div>`:""}</div>`,""]}
   if(V.phase==="take"){const done=V.qs.filter((q,k)=>vAnswered(V,k)).length;
@@ -2240,6 +2246,8 @@ function vClick(t){
   switch(a){
     case "gentopic":vGenTopic();break;
     case "fromNotes":allNotesToDecks();break;
+    case "ltype":if(V&&V.mode==="learn"){S.vopt.learnType=el.dataset.val;LS.set("vopt",S.vopt);const d=V.deck,sub=V.subset;vStop();vStartLearn(d,sub)}break;
+    case "tpreset":{const o=vTopt(),k=el.dataset.val;o.types=k==="mc"?{mc:true,wr:false,tf:false,mt:false}:k==="wr"?{mc:false,wr:true,tf:false,mt:false}:{mc:true,wr:true,tf:true,mt:true};LS.set("vopt",S.vopt);vRender(false);break}
     case "edit":if(D)vOpenEdit(D);break;
     case "moreD":vMenu(el);break;
     case "mode":if(D){const m=el.dataset.m;if(m==="cards")vStartCards(D);else if(m==="learn")vStartLearn(D);else if(m==="test")vTestSetup(D);else if(m==="match")vStartMatch(D)}break;
